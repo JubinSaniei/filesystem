@@ -1,0 +1,290 @@
+# Filesystem API
+
+A secure, feature-rich filesystem API for reading, editing, writing, listing, and searching files with access restrictions, metadata indexing, and real-time file watching.
+
+## Features
+
+### Core Functionality
+- **File Operations**: Read, write, edit, stream, and search file contents
+- **Directory Operations**: Create, list, traverse, and watch directories
+- **Metadata Indexing**: Store and query file metadata for fast searches
+- **Database Queries**: Execute SQL queries against the metadata database
+- **Persistent Metadata**: Database persists between container restarts 
+- **Content Search**: Full-text search across files with pagination
+
+### Advanced Features
+- **Unlimited File Indexing**: No file count limits when indexing directories
+- **Intelligent Ignore Patterns**: Skip directories like node_modules, .git, etc. using patterns similar to .gitignore
+- **File System Watcher**: Automatically track file changes and update the metadata index
+- **File Content Caching**: Smart caching system with LRU eviction for better performance
+- **Cross-Origin Support**: Properly configured CORS for web UI integration
+- **Rate Limiting**: Optional request rate limiting to prevent abuse
+- **Performance Monitoring**: Headers for tracking request processing time and memory usage
+
+### Security & Performance
+- **Path Normalization**: Prevents directory traversal attacks
+- **SQL Injection Prevention**: Secure database query execution
+- **Streaming Responses**: Handle large files efficiently
+- **Concurrent Processing**: Thread pool for CPU-bound operations
+- **Memory Management**: Configurable cache sizes and cleanup intervals
+
+## Directory Structure
+
+```
+filesystem/
+├── main.py                   # Main entry point that launches the app
+├── set_api_url.py            # Script to set the API URL configuration
+├── src/                      # Source code directory
+│   ├── api/                  # API endpoint modules
+│   │   └── metadata_api.py   # Metadata API functionality
+│   ├── core/                 # Core application functionality
+│   │   └── main.py           # FastAPI application definition
+│   ├── db/                   # Database models and operations
+│   │   ├── db.py             # Database operations and models
+│   │   └── db_*.py           # Database utility scripts
+│   ├── utils/                # Utility modules
+│   │   ├── config.py         # Centralized configuration
+│   │   ├── ignore_patterns.py # Pattern matching for ignoring files
+│   │   └── watcher.py        # File system watcher
+│   ├── tests/                # Test files
+│   └── docs/                 # Documentation files
+├── Dockerfile                # Docker configuration
+├── docker-compose.yaml       # Docker Compose configuration
+└── requirements.txt          # Python dependencies
+```
+
+## Quick Start
+
+### With Docker
+
+```bash
+# Build and run the Docker container
+docker build -t filesystem_server .
+docker run -d -p 8010:8000 \
+  -v /path/to/files:/mnt/c/Sandboxes \
+  -v ./testdir:/app/testdir \
+  -v ./src/db:/app/src/db \
+  -v ./src/docs/ignore.md:/app/src/docs/ignore.md \
+  --name filesystem_server filesystem_server
+```
+
+Note: The volume mount for `src/db` ensures your metadata database persists between container restarts.
+
+### With Environment Variables
+
+You can configure the Docker container by setting environment variables:
+
+```bash
+# Run with environment variables for configuration
+docker run -d -p 8010:8000 \
+  -e API_HOST=localhost \
+  -e API_PORT=8010 \
+  -e CACHE_SIZE_MB=200 \
+  -e THREAD_POOL_SIZE=20 \
+  -v /path/to/files:/mnt/c/Sandboxes \
+  -v ./testdir:/app/testdir \
+  -v ./src/db:/app/src/db \
+  -v ./src/docs/ignore.md:/app/src/docs/ignore.md \
+  --name filesystem_server \
+  filesystem_server
+```
+
+### With Docker Compose
+
+```bash
+# Start the application
+docker-compose up -d
+
+# Stop the application
+docker-compose down
+```
+
+The compose.yaml file includes volume mappings to ensure:
+- File indexing permissions for mounted directories
+- Persistence of metadata database between container restarts 
+- Access to ignore patterns file for proper file filtering
+
+### Without Docker
+
+```bash
+# Option 1: Run with system Python (if you have all dependencies)
+pip install -r requirements.txt
+python -m main
+
+# Option 2: Create a virtual environment first (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python -m main
+
+# Run with additional options
+python -m main --host=0.0.0.0 --port=8010 --reload --log-level=debug
+```
+
+## API Endpoints
+
+### File Operations
+
+- `POST /read_file` - Read file contents with caching and streaming support
+- `POST /write_file` - Write content to a file
+- `POST /edit_file` - Apply edits to a file with optional diff preview
+- `POST /create_directory` - Create a new directory recursively
+- `POST /directory_tree` - Get a recursive directory tree with optional depth limiting
+- `POST /delete_path` - Delete a file or directory with option for recursive deletion
+- `POST /move_path` - Move or rename a file or directory
+- `POST /get_metadata` - Get detailed metadata for a file or directory
+
+### Directory Listing
+
+- `POST /list_directory` - List directory contents with detailed metadata
+- `GET /list_allowed_directories` - List directories the API can access
+
+### Search Operations
+
+- `POST /search_content` - Search for text content within files
+- `POST /search_files` - Search for files with various criteria
+- `POST /metadata_search` - Search files using metadata criteria
+
+### Database Operations
+
+- `POST /database_query` - Execute SQL queries on the metadata database
+- `POST /index_directory` - Index a directory in the metadata database
+
+### File Watcher Operations
+
+- `GET /watcher_status` - Get the current status of the file watcher
+- `POST /watch_directory` - Start watching a directory for changes
+- `POST /unwatch_directory` - Stop watching a directory
+- `POST /scan_watched_directories` - Trigger an immediate scan of watched directories
+
+## Configuration
+
+The application can be configured in multiple ways:
+
+### Environment Variables
+
+Set these environment variables to configure the application:
+
+- `API_HOST` - Host to bind the server to (default: localhost)
+- `API_PORT` - Port to bind the server to (default: 8010)
+- `ALLOWED_DIRECTORIES` - Colon-separated list of directories the API is allowed to access
+- `CACHE_SIZE_MB` - Maximum size of the file cache in MB (default: 100)
+- `THREAD_POOL_SIZE` - Number of worker threads for concurrent operations (default: 10)
+
+### Using .env File
+
+You can create a `.env` file in the project root with the same variables:
+
+```
+API_HOST=localhost
+API_PORT=8010
+ALLOWED_DIRECTORIES=/mnt/c/Sandboxes:/app/testdir
+CACHE_SIZE_MB=100
+THREAD_POOL_SIZE=10
+```
+
+### Configuration Script
+
+For convenience, you can use the provided script to set the API URL by creating or updating the `.env` file:
+
+```bash
+# Change the API host and port
+python set_api_url.py --host api.example.com --port 8020
+
+# Reset to default values
+python set_api_url.py --host localhost --port 8010
+
+# The script will:
+# 1. Create or update the .env file in the project root
+# 2. Preserve any existing environment variables in the .env file
+# 3. Override only the API_HOST and API_PORT variables
+```
+
+### Command Line Arguments
+
+When running the application directly, you can use command line arguments:
+
+```bash
+python -m main --host 0.0.0.0 --port 8030 --reload --log-level debug
+```
+
+## Ignore Patterns
+
+The system uses patterns specified in `src/docs/ignore.md` to exclude files and directories from indexing. This functionality is similar to `.gitignore`. Common directories like these are automatically ignored:
+
+- node_modules
+- .git
+- __pycache__
+- .vs
+- .vscode
+- build
+- dist
+- bin
+- obj
+
+## Database Query Examples
+
+The metadata database (`src/db/metadata.db`) persists between container restarts, allowing you to build up a comprehensive index of your files over time. This persistence enables efficient searches and reduces the need to re-index directories.
+
+Example SQL query to find the largest files:
+
+```sql
+SELECT path, size_bytes FROM file_metadata 
+WHERE is_directory = 0 
+ORDER BY size_bytes DESC LIMIT 10
+```
+
+Example SQL query to count files by extension:
+
+```sql
+SELECT extension, COUNT(*) as count 
+FROM file_metadata 
+WHERE extension IS NOT NULL 
+GROUP BY extension 
+ORDER BY count DESC
+```
+
+## Security Considerations
+
+- Only SELECT queries are allowed on the database for security
+- Path traversal protections are in place via path normalization
+- Rate limiting middleware can be enabled to prevent abuse
+- CORS is properly configured for web UI integrations
+- File operations are sandboxed to allowed directories only
+
+## Development
+
+### Dependencies
+
+- Python 3.10+
+- FastAPI 0.100.0+
+- uvicorn[standard]
+- pydantic 2.0.0+
+- aiofiles 23.1.0+
+- SQLAlchemy 2.0.0+
+- aiosqlite 0.19.0+
+- python-dotenv 1.0.0+
+- psutil (optional, for improved performance monitoring)
+
+### Testing
+
+Various test scripts are available in the `src/tests` directory:
+
+```bash
+# Run verification tests
+python -m src.tests.verify_api
+python -m src.tests.verify_extended_api
+python -m src.tests.verify_remaining_api
+
+# Run targeted tests
+python -m src.tests.test_ignore
+python -m src.tests.test_index
+```
+
+### Documentation
+
+For more detailed documentation, please see:
+
+- [API Reference](src/docs/API_REFERENCE.md) - Detailed API documentation
+- [Database Query Guide](src/docs/DATABASE_QUERY_GUIDE.md) - Guide for SQL queries 
+- [Ignore Patterns Guide](src/docs/IGNORE_PATTERNS_GUIDE.md) - Guide for ignore patterns

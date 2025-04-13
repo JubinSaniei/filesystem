@@ -1,0 +1,167 @@
+# Compiled from ignore.md
+
+# MKS 
+*.pj
+*.build
+
+# Documentation files
+Lib/PDI*/**/PDI*.xml
+
+# IDE - Visual Studio Code
+.vscode/*
+/*/.vscode/*
+.history
+
+# IDE - Visual Studio
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/*
+!InstallationFiles/Components/x86
+!InstallationFiles/Components/x86/*
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+# VS directories and files
+.vs/
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+UnitTestResults/
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+.JustCode
+_TeamCity*
+*.dotCover
+*.coverage
+*.coveragexml
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+*.mm.*
+AutoTest.Net/
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
+
+# Build/Compile artifacts
+*_i.c
+*_p.c
+*_i.h
+*.ilk
+*.meta
+*.obj
+*.pch
+*.pdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# Visual C++ cache files
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Web development
+.sass-cache/
+node_modules/
+typings/
+publish/
+*.[Pp]ublish.xml
+*.azurePubxml
+*.pubxml.user
+*.publishproj
+csx/
+*.build.csdef
+ecf/
+rcf/
+
+# Packages and dependencies
+*.nupkg
+**/packages/*
+!**/packages/build/
+!**/packages/repositories.config
+*.nuget.props
+*.nuget.targets
+.paket/paket.exe
+paket-files/
+.fake/
+
+# Database files
+*.mdf
+*.ldf
+*.ndf
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+
+# Backup & temporary files
+~$*
+*~
+*.bak
+Backup*/
+_UpgradeReport_Files/
+UpgradeLog*.XML
+UpgradeLog*.htm
+
+# Python
+__pycache__/
+*.pyc
+
+# JetBrains tools
+.idea/
+*.sln.iml
+
+# SonarQube
+.sonarqube/*
+
+# Project-specific files
+*.dtbcache.*
+*.orig
+*.[Dd]ot[Ss]ettings
+*.eap
+
+# Application databases
+metadata.db
