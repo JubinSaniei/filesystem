@@ -15,7 +15,12 @@ A secure, feature-rich filesystem API for reading, editing, writing, listing, an
 ### Advanced Features
 - **Unlimited File Indexing**: No file count limits when indexing directories
 - **Intelligent Ignore Patterns**: Skip directories like node_modules, .git, etc. using patterns similar to .gitignore
-- **File System Watcher**: Automatically track file changes and update the metadata index
+- **File System Watcher**: Efficiently track file changes and update the metadata index
+  - On-demand directory watching (no auto-watching)
+  - Throttled processing to prevent resource spikes
+  - Batch processing for better performance
+  - Queue system for handling high-volume changes
+  - Automatic periodic scans of watched directories
 - **File Content Caching**: Smart caching system with LRU eviction for better performance
 - **Cross-Origin Support**: Properly configured CORS for web UI integration
 - **Rate Limiting**: Optional request rate limiting to prevent abuse
@@ -147,15 +152,24 @@ python -m main --host=0.0.0.0 --port=8010 --reload --log-level=debug
 
 ### Database Operations
 
-- `POST /database_query` - Execute SQL queries on the metadata database
+- `POST /database_query` - Execute SQL queries on the metadata database (SELECT only)
 - `POST /index_directory` - Index a directory in the metadata database
 
 ### File Watcher Operations
 
-- `GET /watcher_status` - Get the current status of the file watcher
-- `POST /watch_directory` - Start watching a directory for changes
-- `POST /unwatch_directory` - Stop watching a directory
-- `POST /scan_watched_directories` - Trigger an immediate scan of watched directories
+- `GET /metadata/status` - Get the current status of the file watcher
+- `POST /metadata/watch` - Start watching a directory for changes
+- `POST /metadata/unwatch` - Stop watching a directory
+- `POST /metadata/scan` - Trigger an immediate scan of watched directories
+
+The file watcher doesn't watch any directories by default - you must explicitly add directories to watch using the `/metadata/watch` endpoint. Once a directory is being watched, the system will automatically:
+
+1. Detect new, modified, and deleted files
+2. Update the metadata database accordingly
+3. Scan the watched directories periodically (every 5 minutes by default)
+4. Process changes in batches to minimize system resource usage
+
+For detailed examples of file watcher API usage, see the [API Reference](src/docs/API_REFERENCE.md#file-watcher-operations) documentation.
 
 ## Configuration
 
@@ -222,11 +236,15 @@ The system uses patterns specified in `src/docs/ignore.md` to exclude files and 
 - bin
 - obj
 
-## Database Query Examples
+## Database Management
+
+### About the Metadata Database
 
 The metadata database (`src/db/metadata.db`) persists between container restarts, allowing you to build up a comprehensive index of your files over time. This persistence enables efficient searches and reduces the need to re-index directories.
 
-Example SQL query to find the largest files:
+### Database Queries
+
+You can query the database using the API endpoint `/database_query`. Example SQL query to find the largest files:
 
 ```sql
 SELECT path, size_bytes FROM file_metadata 
@@ -243,6 +261,20 @@ WHERE extension IS NOT NULL
 GROUP BY extension 
 ORDER BY count DESC
 ```
+
+### Resetting the Database
+
+For security reasons, database reset is only available within the container and not through the API. To reset the database:
+
+```bash
+# Method 1: Using the shell script (recommended)
+docker exec -it filesystem_server /app/reset_database.sh
+
+# Method 2: Using the Python utility directly
+docker exec -it filesystem_server python -m src.utils.reset_db
+```
+
+After resetting, the watcher will automatically reindex watched directories on the next scan.
 
 ## Security Considerations
 
@@ -286,5 +318,7 @@ python -m src.tests.test_index
 For more detailed documentation, please see:
 
 - [API Reference](src/docs/API_REFERENCE.md) - Detailed API documentation
-- [Database Query Guide](src/docs/DATABASE_QUERY_GUIDE.md) - Guide for SQL queries 
+- [Database Query Guide](src/docs/DATABASE_QUERY_GUIDE.md) - Guide for SQL queries
+- [Database Management](src/docs/DATABASE_MANAGEMENT.md) - Database management and reset guide
 - [Ignore Patterns Guide](src/docs/IGNORE_PATTERNS_GUIDE.md) - Guide for ignore patterns
+- [API Prompts](src/docs/API_PROMPTS.md) - Example prompts for API usage

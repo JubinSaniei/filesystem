@@ -240,40 +240,56 @@ Get a recursive directory tree with depth limiting.
 
 ## File Watcher Operations
 
-### `GET /watcher_status`
+The file watcher doesn't watch any directories by default - you must explicitly add directories to watch using the `/metadata/watch` endpoint. Once a directory is being watched, the system will automatically:
+
+1. Detect new, modified, and deleted files
+2. Update the metadata database accordingly
+3. Scan the watched directories periodically (every 5 minutes by default)
+4. Process changes in batches to minimize system resource usage
+
+### `GET /metadata/status`
 
 Get the current status of the file watcher system.
+
+**Example:**
+```bash
+curl -X GET http://localhost:8000/metadata/status
+```
 
 **Response:**
 ```json
 {
   "status": "active",
-  "watched_directories": [
-    "/path/to/watch1",
-    "/path/to/watch2"
-  ],
-  "directory_count": 2,
+  "watched_directories": ["/app/testdir"],
+  "directory_count": 1,
   "last_scans": {
-    "/path/to/watch1": {
-      "timestamp": "2023-04-01T12:00:00",
-      "seconds_ago": 300,
-      "next_scan_in": 0
-    },
-    "/path/to/watch2": {
-      "timestamp": "2023-04-01T12:05:00",
-      "seconds_ago": 0,
-      "next_scan_in": 300
+    "/app/testdir": {
+      "timestamp": "2025-04-13T19:06:48.993558",
+      "seconds_ago": 2,
+      "next_scan_in": 297
     }
   },
   "scan_interval_seconds": 300,
   "pending_changes": 0,
-  "batch_size": 100
+  "pending_queue": 0,
+  "batch_size": 200
 }
 ```
 
-### `POST /watch_directory`
+Possible status values:
+- `"inactive"`: No directories are being watched or the watcher is stopped
+- `"active"`: The watcher is running and monitoring directories
+
+### `POST /metadata/watch`
 
 Start watching a directory for file changes.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/metadata/watch \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/app/testdir"}'
+```
 
 **Request:**
 ```json
@@ -287,13 +303,20 @@ Start watching a directory for file changes.
 {
   "status": "success",
   "message": "Now watching directory: /path/to/watch",
-  "watched_directory_count": 3
+  "watched_directory_count": 1
 }
 ```
 
-### `POST /unwatch_directory`
+### `POST /metadata/unwatch`
 
 Stop watching a directory for file changes.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/metadata/unwatch \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/app/testdir"}'
+```
 
 **Request:**
 ```json
@@ -307,15 +330,29 @@ Stop watching a directory for file changes.
 {
   "status": "success",
   "message": "Stopped watching directory: /path/to/unwatch",
-  "watched_directory_count": 2
+  "watched_directory_count": 0
 }
 ```
 
-### `POST /scan_watched_directories`
+### `POST /metadata/scan`
 
 Manually trigger a scan of watched directories.
 
-**Request:**
+**Example:**
+```bash
+curl -X POST http://localhost:8000/metadata/scan \
+  -H "Content-Type: application/json" \
+  -d '{"force": true}'
+```
+
+**Request - Scan All Watched Directories:**
+```json
+{
+  "force": true
+}
+```
+
+**Request - Scan a Specific Directory:**
 ```json
 {
   "path": "/path/to/scan",
@@ -323,21 +360,15 @@ Manually trigger a scan of watched directories.
 }
 ```
 
-For scanning all watched directories, omit the path:
-```json
-{
-  "force": true
-}
-```
+The `force` parameter ignores the last scan time and performs a full scan immediately.
 
 **Response:**
 ```json
 {
   "status": "success",
-  "message": "Successfully scanned 2 directories",
+  "message": "Successfully scanned 1 directory",
   "scanned_directories": [
-    "/path/to/watch1",
-    "/path/to/watch2"
+    "/app/testdir"
   ]
 }
 ```

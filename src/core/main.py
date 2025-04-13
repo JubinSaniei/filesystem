@@ -43,6 +43,13 @@ try:
     IGNORE_PATTERNS_AVAILABLE = True
 except ImportError:
     IGNORE_PATTERNS_AVAILABLE = False
+    
+# Import metadata API router
+try:
+    from src.api import metadata_api
+    METADATA_API_ROUTER_AVAILABLE = True
+except ImportError:
+    METADATA_API_ROUTER_AVAILABLE = False
 
 # Constants
 ALLOWED_DIRECTORIES = [
@@ -124,25 +131,13 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"WARNING: Failed to load ignore patterns: {e}")
             
-    # Initialize file watcher for allowed directories
+    # Initialize file watcher system but don't watch any directories by default
     if METADATA_API_AVAILABLE and WATCHER_AVAILABLE:
         try:
-            print("Initializing file watcher...")
-            # Convert allowed directories to list of valid directory paths
-            valid_dirs = []
-            for dir_path in ALLOWED_DIRECTORIES:
-                path = pathlib.Path(dir_path)
-                if path.exists() and path.is_dir():
-                    valid_dirs.append(str(path))
-                    print(f"Adding {dir_path} to watched directories")
-                else:
-                    print(f"Skipping non-existent directory: {dir_path}")
-                    
-            if valid_dirs:
-                await watcher.initialize_watcher(valid_dirs)
-                print(f"File watcher initialized for {len(valid_dirs)} directories")
-            else:
-                print("No valid directories to watch")
+            print("Initializing file watcher system...")
+            # Initialize watcher with empty list (no directories watched by default)
+            await watcher.initialize_watcher([])
+            print("File watcher system initialized - no directories being watched by default")
         except Exception as e:
             print(f"WARNING: Failed to initialize file watcher: {e}")
     
@@ -225,161 +220,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Database Interaction API Endpoint
-
-class DatabaseQueryRequest(BaseModel):
-    """Request for executing SQL queries on the metadata database"""
-    query: str = Field(..., description="SQL query to execute (SELECT only)")
-    params: Optional[Dict[str, Any]] = Field(None, description="Parameters for the SQL query")
-    limit: int = Field(1000, description="Maximum number of results to return", ge=1, le=10000)
-
-@app.post("/database_query", summary="Execute a database query")
-async def database_query(request: DatabaseQueryRequest = Body(...)):
-    """
-    Execute a query on the metadata database.
-    
-    Only SELECT queries are allowed for security reasons.
-    Results are limited to prevent excessive memory usage.
-    
-    Query examples:
-    
-    1. Get all files with a specific extension:
-    ```
-    SELECT * FROM file_metadata WHERE extension = '.py' LIMIT 100
-    ```
-    
-    2. Find the largest files:
-    ```
-    SELECT path FROM file_metadata 
-    WHERE is_directory = 0 
-    ORDER BY size_bytes DESC LIMIT 20
-    ```
-    
-    3. Get files modified in the last day:
-    ```
-    SELECT path FROM file_metadata 
-    WHERE modified_time > datetime('now', '-1 day')
-    LIMIT 100
-    ```
-    
-    4. Count files by extension:
-    ```
-    SELECT extension, COUNT(*) as count 
-    FROM file_metadata 
-    WHERE extension IS NOT NULL 
-    GROUP BY extension 
-    ORDER BY count DESC
-    ```
-    
-    5. Find directories with the most files:
-    ```
-    SELECT parent_dir, COUNT(*) as file_count
-    FROM file_metadata
-    GROUP BY parent_dir
-    ORDER BY file_count DESC
-    LIMIT 20
-    ```
-    """
-    if not METADATA_API_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="Metadata database is not available"
-        )
-    
-    query = request.query.strip()
-    
-    # Security check - only allow SELECT queries
-    if not query.lower().startswith("select"):
-        raise HTTPException(
-            status_code=403,
-            detail="Only SELECT queries are allowed for security reasons"
-        )
-        
-    # Check for dangerous keywords that might bypass our security
-    dangerous_keywords = ["insert", "update", "delete", "drop", "alter", "create", 
-                         "pragma", "attach", "detach", "vacuum", ";"]
-    
-    for keyword in dangerous_keywords:
-        if keyword.lower() in query.lower():
-            raise HTTPException(
-                status_code=403,
-                detail=f"Query contains disallowed keyword: {keyword}"
-            )
-    
-    # Add LIMIT clause if not present
-    if "limit " not in query.lower():
-        if query.lower().endswith(";"):
-            query = query[:-1]  # Remove trailing semicolon
-        query = f"{query} LIMIT {request.limit}"
-    else:
-        # If LIMIT is already present, ensure it doesn't exceed our max
-        limit_pattern = re.compile(r'limit\s+(\d+)', re.IGNORECASE)
-        match = limit_pattern.search(query)
-        if match:
-            try:
-                limit_value = int(match.group(1))
-                if limit_value > request.limit:
-                    # Replace with our limit
-                    query = limit_pattern.sub(f"LIMIT {request.limit}", query)
-            except ValueError:
-                pass
-    
-    try:
-        start_time = time.time()
-        
-        # Use SQLite's built-in connection for simplicity
-        import sqlite3
-        import json
-        
-        # Get the database path from our module
-        db_path = db.DB_PATH
-        
-        # Connect to the database directly
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row  # This allows us to access columns by name
-        
-        # Execute the query
-        cursor = conn.cursor()
-        if request.params:
-            cursor.execute(query, request.params)
-        else:
-            cursor.execute(query)
-        
-        # Get the results
-        rows = []
-        for row in cursor.fetchall():
-            # Convert sqlite3.Row to dict
-            row_dict = {key: row[key] for key in row.keys()}
-            rows.append(row_dict)
-        
-        # Close the connection
-        conn.close()
-        
-        execution_time = time.time() - start_time
-        
-        return {
-            "status": "success",
-            "rows": rows,
-            "row_count": len(rows),
-            "execution_time_ms": int(execution_time * 1000),
-            "query": query
-        }
-    except sqlite3.Error as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"SQLite error: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database query error: {str(e)}"
-        )
-
-# We need to add the rest of the original file here
-# For simplicity, we'll just stub in a basic implementation
-# This would normally be the rest of the main.py file
-
-# Required implementation of normalize_path function
+# Required implementation of normalize_path function (moved up from below)
 @functools.lru_cache(maxsize=1024)
 def normalize_path(requested_path: str) -> pathlib.Path:
     """
@@ -402,6 +243,22 @@ def normalize_path(requested_path: str) -> pathlib.Path:
             "allowed_directories": ALLOWED_DIRECTORIES,
         },
     )
+
+# Include the metadata API router if available
+if METADATA_API_ROUTER_AVAILABLE:
+    # Make the normalize_path function available to the router
+    metadata_api.normalize_path = normalize_path
+    # Include the router
+    app.include_router(metadata_api.router)
+    print("Metadata API router included")
+
+# Other endpoints are now defined in the metadata_api module and included via the router above
+
+# We need to add the rest of the original file here
+# For simplicity, we'll just stub in a basic implementation
+# This would normally be the rest of the main.py file
+
+# normalize_path function moved above before the router inclusion
 
 def cleanup_cache() -> None:
     """
@@ -1615,250 +1472,62 @@ async def list_allowed_directories():
     """
     return {"allowed_directories": ALLOWED_DIRECTORIES}
 
-@app.get("/watcher_status", summary="Get file watcher status")
-async def watcher_status():
-    """
-    Get the current status of the file watcher system.
-    Shows which directories are being watched, when they were last scanned,
-    and if the watcher is actively running.
-    """
-    if not WATCHER_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="File watcher functionality is not available"
-        )
-        
-    try:
-        # Get watched directories and their last scan times
-        watched_dirs = list(watcher.watched_directories)
-        
-        # Format timestamps to be readable
-        last_scans = {}
-        for dir_path in watched_dirs:
-            last_scan_time = watcher.last_scan_times.get(dir_path)
-            if last_scan_time:
-                time_diff = datetime.now() - last_scan_time
-                last_scans[dir_path] = {
-                    "timestamp": last_scan_time.isoformat(),
-                    "seconds_ago": int(time_diff.total_seconds()),
-                    "next_scan_in": max(0, int(watcher.SCAN_INTERVAL - time_diff.total_seconds()))
-                }
-            else:
-                last_scans[dir_path] = None
-        
-        # Get information about modified paths awaiting processing
-        pending_changes = len(watcher.modified_paths)
-        
-        return {
-            "status": "active" if watcher.watcher_running else "inactive",
-            "watched_directories": watched_dirs,
-            "directory_count": len(watched_dirs),
-            "last_scans": last_scans,
-            "scan_interval_seconds": watcher.SCAN_INTERVAL,
-            "pending_changes": pending_changes,
-            "batch_size": watcher.BATCH_SIZE
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error getting watcher status: {str(e)}"
-        )
+# Metadata API endpoints have been moved to metadata_api.py and are now included via the router
 
-class WatchDirectoryRequest(BaseModel):
-    """Request for watching a directory."""
-    path: str = Field(..., description="Directory path to watch for changes")
+# Commented out in favor of the modular approach using metadata_api router
+# @app.get("/watcher_status", summary="Get file watcher status")
+# async def watcher_status():
+#     """
+#     Get the current status of the file watcher system.
+#     Shows which directories are being watched, when they were last scanned,
+#     and if the watcher is actively running.
+#     """
+#     ...
 
-@app.post("/watch_directory", summary="Start watching a directory")
-async def watch_directory(data: WatchDirectoryRequest = Body(...)):
-    """
-    Start watching a directory for file changes.
-    The watcher will automatically update the metadata index when files change in this directory.
-    """
-    if not WATCHER_AVAILABLE or not METADATA_API_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="File watcher functionality is not available"
-        )
-    
-    # Validate path is within allowed directories
-    try:
-        dir_path = normalize_path(data.path)
-        if not dir_path.is_dir():
-            raise HTTPException(status_code=400, detail="Path is not a directory")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-        
-    try:
-        # Start watching the directory
-        await watcher.watch_directory(dir_path)
-        
-        return {
-            "status": "success",
-            "message": f"Now watching directory: {data.path}",
-            "watched_directory_count": len(watcher.watched_directories)
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to watch directory: {str(e)}"
-        )
+# Metadata request models are now defined in metadata_api.py
+# class WatchDirectoryRequest(BaseModel):
+#     """Request for watching a directory."""
+#     path: str = Field(..., description="Directory path to watch for changes")
 
-class UnwatchDirectoryRequest(BaseModel):
-    """Request for unwatching a directory."""
-    path: str = Field(..., description="Directory path to stop watching")
+# @app.post("/watch_directory", summary="Start watching a directory")
+# async def watch_directory(data: WatchDirectoryRequest = Body(...)):
+#     """
+#     Start watching a directory for file changes.
+#     The watcher will automatically update the metadata index when files change in this directory.
+#     """
+#     ...
 
-@app.post("/unwatch_directory", summary="Stop watching a directory")
-async def unwatch_directory(data: UnwatchDirectoryRequest = Body(...)):
-    """
-    Stop watching a directory for file changes.
-    """
-    if not WATCHER_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="File watcher functionality is not available"
-        )
-    
-    try:
-        dir_path = normalize_path(data.path)
-        
-        # Check if directory is currently being watched
-        if str(dir_path) not in watcher.watched_directories:
-            return {
-                "status": "warning",
-                "message": f"Directory {data.path} was not being watched"
-            }
-            
-        # Stop watching the directory
-        await watcher.unwatch_directory(dir_path)
-        
-        return {
-            "status": "success",
-            "message": f"Stopped watching directory: {data.path}",
-            "watched_directory_count": len(watcher.watched_directories)
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to stop watching directory: {str(e)}"
-        )
+# class UnwatchDirectoryRequest(BaseModel):
+#     """Request for unwatching a directory."""
+#     path: str = Field(..., description="Directory path to stop watching")
 
-class ScanDirectoryRequest(BaseModel):
-    """Request for scanning a specific directory or all watched directories."""
-    path: Optional[str] = Field(None, description="Optional specific directory path to scan. If not provided, all watched directories will be scanned.")
-    force: bool = Field(False, description="Force full scan even if last scan was recent")
+# @app.post("/unwatch_directory", summary="Stop watching a directory")
+# async def unwatch_directory(data: UnwatchDirectoryRequest = Body(...)):
+#     """
+#     Stop watching a directory for file changes.
+#     """
+#     ...
 
-@app.post("/scan_watched_directories", summary="Trigger manual scan of watched directories")
-async def scan_watched_directories(data: ScanDirectoryRequest = Body(...)):
-    """
-    Manually trigger a scan of watched directories to update the metadata index.
-    Useful when you've made changes outside the API and want to update the index immediately.
-    """
-    if not WATCHER_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="File watcher functionality is not available"
-        )
-    
-    try:
-        scanned_dirs = []
-        
-        # If a specific path is provided
-        if data.path:
-            try:
-                dir_path = normalize_path(data.path)
-                dir_str = str(dir_path)
-                
-                # Check if directory is being watched
-                if dir_str not in watcher.watched_directories:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Directory {data.path} is not currently being watched. Use /watch_directory first."
-                    )
-                
-                # Force update of last scan time if needed
-                if data.force:
-                    # Set last scan time to a long time ago
-                    watcher.last_scan_times[dir_str] = datetime.now() - timedelta(days=1)
-                    
-                # Manually trigger directory scan
-                await watcher._scan_directories()
-                
-                # Also process any pending changes
-                await watcher._process_modified_paths()
-                
-                scanned_dirs.append(dir_str)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error scanning directory {data.path}: {str(e)}"
-                )
-        else:
-            # Scan all watched directories
-            if not watcher.watched_directories:
-                return {
-                    "status": "warning",
-                    "message": "No directories are currently being watched"
-                }
-                
-            # Force update all last scan times if needed
-            if data.force:
-                old_time = datetime.now() - timedelta(days=1)
-                for dir_str in watcher.watched_directories:
-                    watcher.last_scan_times[dir_str] = old_time
-            
-            # Trigger scan
-            await watcher._scan_directories()
-            
-            # Process any pending changes
-            await watcher._process_modified_paths()
-            
-            scanned_dirs = list(watcher.watched_directories)
-            
-        return {
-            "status": "success",
-            "message": f"Successfully scanned {len(scanned_dirs)} directories",
-            "scanned_directories": scanned_dirs
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error scanning directories: {str(e)}"
-        )
+# class ScanDirectoryRequest(BaseModel):
+#     """Request for scanning a specific directory or all watched directories."""
+#     path: Optional[str] = Field(None, description="Optional specific directory path to scan. If not provided, all watched directories will be scanned.")
+#     force: bool = Field(False, description="Force full scan even if last scan was recent")
 
-@app.post("/index_directory", summary="Index a directory")
-async def index_directory(path: str = Body(..., embed=True)):
-    """
-    Index a directory and its contents in the metadata database.
-    With no file limit for comprehensive indexing.
-    """
-    if not METADATA_API_AVAILABLE:
-        raise HTTPException(status_code=501, detail="Metadata API is not available")
-    
-    # Validate path is within allowed directories
-    try:
-        dir_path = normalize_path(path)
-        if not dir_path.is_dir():
-            raise HTTPException(status_code=400, detail="Path is not a directory")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-        
-    try:
-        # Index the specified directory with no file limit
-        print(f"Starting unlimited indexing of directory: {path}")
-        count = await db.index_directory_recursive(dir_path, max_files=None)
-            
-        return {
-            "status": "success", 
-            "message": f"Successfully indexed directory: {path}",
-            "file_count": count
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to index directory: {str(e)}"
-        )
+# @app.post("/scan_watched_directories", summary="Trigger manual scan of watched directories")
+# async def scan_watched_directories(data: ScanDirectoryRequest = Body(...)):
+#     """
+#     Manually trigger a scan of watched directories to update the metadata index.
+#     Useful when you've made changes outside the API and want to update the index immediately.
+#     """
+#     ...
+
+# @app.post("/index_directory", summary="Index a directory")
+# async def index_directory(path: str = Body(..., embed=True)):
+#     """
+#     Index a directory and its contents in the metadata database.
+#     With no file limit for comprehensive indexing.
+#     """
+#     ...
 
 # --- Directory and File APIs ---
 
