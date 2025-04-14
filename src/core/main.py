@@ -189,6 +189,10 @@ async def lifespan(app: FastAPI):
 
 # Metadata API availability was already set up at the top of the file
 
+# Import OpenAPI enhancer
+from src.utils.openapi_enhancer import enhance_openapi_schema
+from src.utils.nl_mapping import nl_mapping, COMMON_PATHS, COMMON_PARAMETER_MAPPINGS
+
 # Initialize FastAPI app with lifespan
 app = FastAPI(
     title="Secure Filesystem API",
@@ -216,9 +220,19 @@ app = FastAPI(
     - Intelligent pagination for search results
     - SQLite metadata indexing for fast file searches
     - File system watcher for real-time metadata updates
+    
+    ## Natural Language Support
+    
+    This API supports natural language interactions through AI systems. The API endpoints
+    have been enhanced with natural language mappings that help AI systems translate user
+    queries into the appropriate API calls. For more information, see the
+    [Natural Language Mapping Guide](src/docs/NATURAL_LANGUAGE_MAPPING.md).
     """,
     lifespan=lifespan
 )
+
+# Enhance the OpenAPI schema with natural language mappings
+enhance_openapi_schema(app)
 
 # Required implementation of normalize_path function (moved up from below)
 @functools.lru_cache(maxsize=1024)
@@ -533,7 +547,29 @@ app.add_middleware(
 # Rate limit middleware (disabled by default, uncomment to enable)
 # app.add_middleware(RateLimitMiddleware, limit=100, window=60)
 
-@app.get("/")
+@app.get("/", 
+    summary="API information",
+    description="""
+    Get basic information about the API.
+    
+    ## Natural Language Queries
+    - "What is this API?"
+    - "Tell me about this server"
+    - "What can you do?"
+    - "What are you?"
+    - "How do I use this API?"
+    """,
+    openapi_extra=nl_mapping(
+        queries=[
+            "what is this api",
+            "tell me about this server",
+            "what can you do",
+            "what are you",
+            "how do i use this api"
+        ],
+        response_template="I'm a filesystem API that allows you to read, write, edit, and search files and directories."
+    )
+)
 def root():
     """Root endpoint returns basic info"""
     return {"message": "Filesystem API with Database Query Support"}
@@ -790,7 +826,43 @@ async def file_streamer(file_path, chunk_size, text_mode=False):
             else:
                 yield chunk
 
-@app.post("/read_file", response_model=ReadFileResponse, summary="Read a file", response_model_exclude_none=True)
+@app.post(
+    "/read_file", 
+    response_model=ReadFileResponse, 
+    summary="Read a file", 
+    response_model_exclude_none=True,
+    description="""
+    Read the contents of a file and return as JSON or stream for large files.
+    Uses caching for better performance and async file operations.
+    Includes improved security checks and error handling.
+    
+    ## Natural Language Queries
+    - "Show me the contents of [file]"
+    - "What's in [file]?"
+    - "Read [file]"
+    - "Display the content of [file]"
+    - "Open [file]"
+    - "Show [file]"
+    - "Let me see [file]"
+    """,
+    openapi_extra=nl_mapping(
+        queries=[
+            "show me the contents of file",
+            "what's in file",
+            "read file",
+            "display the content of file",
+            "open file",
+            "show file",
+            "let me see file"
+        ],
+        parameter_mappings={
+            "path": ["file", "document", "text file", "path"],
+            "stream": ["stream", "download", "continuously"]
+        },
+        response_template="Here's the content of {file_name}:\n\n{content}",
+        common_paths=COMMON_PATHS
+    )
+)
 async def read_file(data: ReadFileRequest = Body(...)):
     """
     Read the contents of a file and return as JSON or stream for large files.
@@ -879,7 +951,46 @@ async def read_file(data: ReadFileRequest = Body(...)):
         logger.error(f"ERROR reading file {data.path}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to read file {data.path}: {str(e)}")
 
-@app.post("/write_file", response_model=SuccessResponse, summary="Write to a file")
+@app.post(
+    "/write_file", 
+    response_model=SuccessResponse, 
+    summary="Write to a file",
+    description="""
+    Write content to a file, overwriting if it exists. Returns JSON success message.
+    Uses async file operations for better performance.
+    Implements transaction-like semantics for cache operations.
+    Also updates metadata index when a file is written.
+    
+    ## Natural Language Queries
+    - "Create a file called [name] with content [content]"
+    - "Write [content] to [file]"
+    - "Save this content to [file]"
+    - "Create a new file [name]"
+    - "Make a file with [content]"
+    - "Save [content] as [filename]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "create a file called name with content",
+                "write content to file",
+                "save this content to file",
+                "create a new file",
+                "make a file with content",
+                "save content as filename"
+            ],
+            "parameter_mappings": {
+                "path": ["file", "filename", "path", "location", "name"],
+                "content": ["text", "content", "data", "information"]
+            },
+            "response_template": "I've created a new file called '{file_name}' with the content you provided.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def write_file(data: WriteFileRequest = Body(...)):
     """
     Write content to a file, overwriting if it exists. Returns JSON success message.
@@ -941,7 +1052,42 @@ async def write_file(data: WriteFileRequest = Body(...)):
 @app.post(
     "/edit_file",
     response_model=Union[SuccessResponse, DiffResponse],
-    summary="Edit a file with diff"
+    summary="Edit a file with diff",
+    description="""
+    Apply a list of edits to a text file.
+    Returns JSON success message or JSON diff on dry-run.
+    Uses async file operations and caching for better performance.
+    Implements transaction-like semantics for cache operations.
+    
+    ## Natural Language Queries
+    - "Change [old text] to [new text] in [file]"
+    - "Replace [old text] with [new text] in [file]"
+    - "Edit [file] to change [old text] to [new text]"
+    - "Update [file] by replacing [old text] with [new text]"
+    - "Modify [file] to say [new text] instead of [old text]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "change old text to new text in file",
+                "replace old text with new text in file",
+                "edit file to change old text to new text",
+                "update file by replacing old text with new text",
+                "modify file to say new text instead of old text"
+            ],
+            "parameter_mappings": {
+                "path": ["file", "document", "text file"],
+                "oldText": ["old text", "original text", "current text", "existing text"],
+                "newText": ["new text", "replacement text", "updated text", "corrected text"],
+                "dryRun": ["preview", "dry run", "show changes", "simulate", "don't apply"]
+            },
+            "response_template": "I've updated the file '{file_name}'. I replaced '{old_text}' with '{new_text}'.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
 )
 async def edit_file(data: EditFileRequest = Body(...)):
     """
@@ -1039,7 +1185,43 @@ async def edit_file(data: EditFileRequest = Body(...)):
         # We don't try to restore cache - better to have a cache miss than stale data
         raise HTTPException(status_code=500, detail=f"Failed to write edited file {data.path}: {str(e)}")
 
-@app.post("/create_directory", response_model=SuccessResponse, summary="Create a directory")
+@app.post(
+    "/create_directory", 
+    response_model=SuccessResponse, 
+    summary="Create a directory",
+    description="""
+    Create a new directory recursively. Returns JSON success message.
+    Also updates the metadata index with the new directory.
+    
+    ## Natural Language Queries
+    - "Create a directory called [name]"
+    - "Make a new folder at [path]"
+    - "Create directory [name]"
+    - "Make folder [name]"
+    - "Create a new directory at [path]"
+    - "Add folder [name]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "create a directory called name",
+                "make a new folder at path",
+                "create directory name",
+                "make folder name",
+                "create a new directory at path",
+                "add folder name"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location", "path", "name"]
+            },
+            "response_template": "I've created a new folder called '{directory_name}' at '{path}'.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def create_directory(data: CreateDirectoryRequest = Body(...)):
     """
     Create a new directory recursively. Returns JSON success message.
@@ -1063,7 +1245,44 @@ async def create_directory(data: CreateDirectoryRequest = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create directory {data.path}: {str(e)}")
 
-@app.post("/directory_tree", summary="Recursive directory tree with depth limit")
+@app.post(
+    "/directory_tree",
+    summary="Recursive directory tree with depth limit",
+    description="""
+    Return a tree structure of a directory using an iterative approach with depth limit.
+    Uses a non-recursive implementation to avoid stack overflow on large directories.
+    
+    ## Natural Language Queries
+    - "Show the directory structure of [path]"
+    - "Get a tree view of [directory]"
+    - "Show me the file tree for [path]"
+    - "What's the structure of [directory]?"
+    - "List the directory tree for [path]"
+    - "Show nested folders in [directory]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "show the directory structure of path",
+                "get a tree view of directory",
+                "show me the file tree for path",
+                "what's the structure of directory",
+                "list the directory tree for path",
+                "show nested folders in directory"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location"],
+                "max_depth": ["depth", "levels", "how deep", "nested level"],
+                "include_hidden": ["show hidden", "include hidden", "hidden files"]
+            },
+            "response_template": "Here's the directory structure of '{path}':",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def directory_tree(data: DirectoryTreeRequest = Body(...)):
     """
     Return a tree structure of a directory using an iterative approach with depth limit.
@@ -1121,7 +1340,56 @@ async def directory_tree(data: DirectoryTreeRequest = Body(...)):
     tree = await run_in_threadpool(build_tree_iterative, base_path, data.max_depth)
     return {"tree": tree}
 
-@app.post("/search_content", response_model=SearchContentResponse, summary="Search for content within files")
+@app.post(
+    "/search_content", 
+    response_model=SearchContentResponse, 
+    summary="Search for content within files",
+    description="""
+    Search for text content within files in a specified directory.
+    Uses thread pool for parallel file processing and supports pagination.
+    
+    Features:
+    - Robust error handling for individual file failures
+    - Parallel processing of files for better performance
+    - Pagination to handle large result sets
+    - Statistics about the search operation
+    - Smart file type detection to skip binary files
+    
+    ## Natural Language Queries
+    - "Search for [text] in files"
+    - "Find files containing [text]"
+    - "Look for [text] inside files"
+    - "Which files contain [text]?"
+    - "Search content for [text]"
+    - "Find occurrences of [text]"
+    - "Search for [text] in the codebase"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "search for text in files",
+                "find files containing text",
+                "look for text inside files",
+                "which files contain text",
+                "search content for text",
+                "find occurrences of text",
+                "search for text in the codebase"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location", "where to search"],
+                "search_query": ["text", "content", "pattern", "string", "phrase"],
+                "recursive": ["include subdirectories", "search subdirectories", "recursive"],
+                "file_pattern": ["file type", "extension", "file filter"]
+            },
+            "response_template": "I found '{search_query}' in {total} files:",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir",
+                "the codebase": "/mnt/c/Sandboxes/CodeGen"
+            }
+        }
+    }
+)
 async def search_content(data: SearchContentRequest = Body(...)):
     """
     Search for text content within files in a specified directory.
@@ -1247,7 +1515,46 @@ async def search_content(data: SearchContentRequest = Body(...)):
         stats=stats
     )
 
-@app.post("/delete_path", response_model=SuccessResponse, summary="Delete a file or directory")
+@app.post("/delete_path", 
+    response_model=SuccessResponse, 
+    summary="Delete a file or directory", 
+    description="""
+    Delete a specified file or directory. Requires explicit confirmation.
+    Use 'recursive=True' to delete non-empty directories.
+    
+    ## Natural Language Queries
+    - "Delete the file [file_path]"
+    - "Remove the directory [directory_path]"
+    - "Delete all files in [directory_path]"
+    - "Permanently remove [file_path]"
+    - "Erase file [file_path]"
+    - "Delete [file_path] recursively"
+    - "Remove folder [directory_path]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "delete file",
+                "remove directory",
+                "delete all files in directory",
+                "permanently remove file",
+                "erase file",
+                "delete directory recursively",
+                "remove folder"
+            ],
+            "parameter_mappings": {
+                "path": ["file path", "directory path", "folder path", "file", "folder", "directory"],
+                "confirm": ["confirm deletion", "confirm", "i'm sure", "yes delete it"],
+                "recursive": ["recursively", "delete everything inside", "including contents", "delete all files inside"]
+            },
+            "response_template": "I've deleted {path}. {additional_info}",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def delete_path(data: DeletePathRequest = Body(...)):
     """
     Delete a specified file or directory. Requires explicit confirmation.
@@ -1327,7 +1634,45 @@ async def delete_path(data: DeletePathRequest = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete {data.path}: {e}")
 
-@app.post("/move_path", response_model=SuccessResponse, summary="Move or rename a file or directory")
+@app.post("/move_path", 
+    response_model=SuccessResponse, 
+    summary="Move or rename a file or directory",
+    description="""
+    Move or rename a file or directory from source_path to destination_path.
+    Both paths must be within the allowed directories.
+    
+    ## Natural Language Queries
+    - "Move [source_path] to [destination_path]"
+    - "Rename [source_path] to [destination_path]"
+    - "Move file from [source_path] to [destination_path]"
+    - "Move directory [source_path] to [destination_path]"
+    - "Copy and delete [source_path] to [destination_path]"
+    - "Relocate [source_path] to [destination_path]"
+    - "Transfer [source_path] to [destination_path]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "move file to destination",
+                "rename file to",
+                "move file from source to destination",
+                "move directory to destination",
+                "copy and delete file to",
+                "relocate file to",
+                "transfer file to"
+            ],
+            "parameter_mappings": {
+                "source_path": ["source file", "source path", "source", "old name", "current file", "old file", "from path", "original file"],
+                "destination_path": ["destination", "destination path", "target location", "new name", "new file", "to path", "new location"]
+            },
+            "response_template": "I've moved {source_path} to {destination_path}.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def move_path(data: MovePathRequest = Body(...)):
     """
     Move or rename a file or directory from source_path to destination_path.
@@ -1378,7 +1723,42 @@ async def move_path(data: MovePathRequest = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to move '{data.source_path}' to '{data.destination_path}': {e}")
     
-@app.post("/get_metadata", summary="Get file or directory metadata")
+@app.post("/get_metadata", 
+    summary="Get file or directory metadata",
+    description="""
+    Retrieve metadata for a specified file or directory path.
+    
+    ## Natural Language Queries
+    - "Get metadata for [path]"
+    - "Tell me about the file [path]"
+    - "What do you know about [path]"
+    - "Show file details for [path]"
+    - "Get information about [path]"
+    - "When was [path] last modified?"
+    - "What is the size of [path]?"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "get metadata for",
+                "tell me about the file",
+                "what do you know about",
+                "show file details for",
+                "get information about",
+                "when was file last modified",
+                "what is the size of"
+            ],
+            "parameter_mappings": {
+                "path": ["file path", "file", "directory", "folder", "document"]
+            },
+            "response_template": "The file {path} is a {type}, {size_desc}, last modified on {modified_time}.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def get_metadata(data: GetMetadataRequest = Body(...)):
     """
     Retrieve metadata for a specified file or directory path.
@@ -1417,7 +1797,49 @@ async def get_metadata(data: GetMetadataRequest = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get metadata for {data.path}: {e}")
 
-@app.post("/metadata_search", summary="Search files using metadata")
+@app.post("/metadata_search", 
+    summary="Search files using metadata",
+    description="""
+    Search for files and directories using metadata criteria.
+    Results are paginated and can be filtered by various attributes.
+    
+    ## Natural Language Queries
+    - "Find files with extension [ext]"
+    - "Search for [file type] files"
+    - "Find files modified [time period]"
+    - "Search for files related to [topic]"
+    - "Find files containing [term] in their name"
+    - "Search for [size] files"
+    - "Find all directories under [path]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "find files with extension",
+                "search for file type files",
+                "find files modified recently",
+                "search for files related to topic",
+                "find files containing term in their name",
+                "search for large files",
+                "search for small files",
+                "find all directories under path"
+            ],
+            "parameter_mappings": {
+                "query": ["search term", "keyword", "text", "name contains"],
+                "extensions": ["file types", "file extensions", "types of files"],
+                "is_directory": ["folders only", "files only", "just directories", "just files"],
+                "min_size": ["larger than", "bigger than", "minimum size"],
+                "max_size": ["smaller than", "maximum size", "not bigger than"],
+                "path_prefix": ["in directory", "under path", "within folder"]
+            },
+            "response_template": "I found {total} files matching your search criteria.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def metadata_search(data: MetadataSearchRequest = Body(...)):
     """
     Search for files and directories using metadata criteria.
@@ -1465,7 +1887,37 @@ async def metadata_search(data: MetadataSearchRequest = Body(...)):
             detail=f"Failed to search metadata: {str(e)}"
         )
         
-@app.get("/list_allowed_directories", summary="List access-permitted directories")
+@app.get(
+    "/list_allowed_directories", 
+    summary="List access-permitted directories",
+    description="""
+    Get a list of all directories this server can access.
+    
+    ## Natural Language Queries
+    - "What is the allowed directory"
+    - "Which directories are allowed"
+    - "What folders can I access"
+    - "Show me allowed paths"
+    - "What directories can I use"
+    - "Where can I store files"
+    - "What locations can I read from"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "what is the allowed directory",
+                "which directories are allowed",
+                "what folders can I access",
+                "show me allowed paths",
+                "what directories can I use",
+                "where can I store files",
+                "what locations can I read from"
+            ],
+            "parameter_mappings": {},
+            "response_template": "The allowed directories are: {allowed_directories}. These are the only directories the filesystem can access for security reasons."
+        }
+    }
+)
 async def list_allowed_directories():
     """
     Show all directories this server can access.
@@ -1557,7 +2009,46 @@ class DirectoryResponse(BaseModel):
     item_count: int
     parent_directory: Optional[str]
 
-@app.post("/list_directory", summary="List directory contents")
+@app.post("/list_directory", 
+    summary="List directory contents",
+    description="""
+    List the contents of a directory.
+    Returns files and subdirectories with metadata information.
+    Hidden files are excluded by default.
+    
+    ## Natural Language Queries
+    - "List contents of [path]"
+    - "Show files in [path]"
+    - "What's in [path]"
+    - "Show me the contents of [path]"
+    - "What files are in [path]"
+    - "List files in [path]"
+    - "Show directory contents for [path]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "list contents of directory",
+                "show files in directory",
+                "what's in directory",
+                "show me the contents of directory",
+                "what files are in directory",
+                "list files in directory",
+                "show directory contents for"
+            ],
+            "parameter_mappings": {
+                "path": ["directory path", "folder path", "directory", "folder"],
+                "include_hidden": ["include hidden files", "show hidden files", "show all files", "include dot files"],
+                "recursive": ["include subdirectories", "search subdirectories", "show all nested files"]
+            },
+            "response_template": "The directory {path} contains {file_count} files and {dir_count} subdirectories.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def list_directory(request: DirectoryRequest = Body(...)):
     """
     List the contents of a directory.
@@ -1738,7 +2229,58 @@ class SearchResponse(BaseModel):
     has_more: bool
     execution_time_seconds: float
 
-@app.post("/search_files", summary="Search for files")
+@app.post(
+    "/search_files", 
+    summary="Search for files",
+    description="""
+    Search for files matching various criteria.
+    
+    This endpoint supports:
+    - Text pattern matching
+    - Recursive directory traversal
+    - Exclusion patterns
+    - File type filtering
+    - Size constraints
+    - Modification date filtering
+    - Pagination
+    
+    For large directories, the search is performed asynchronously
+    with a configurable timeout.
+    
+    ## Natural Language Queries
+    - "Find files named [pattern]"
+    - "Search for files matching [pattern]"
+    - "Find [pattern] files"
+    - "Look for files called [pattern]"
+    - "List files matching [pattern]"
+    - "Show me files with names like [pattern]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "find files named pattern",
+                "search for files matching pattern",
+                "find pattern files",
+                "look for files called pattern",
+                "list files matching pattern",
+                "show me files with names like pattern"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location", "where to search"],
+                "pattern": ["name", "filename", "file pattern", "glob pattern"],
+                "recursive": ["include subdirectories", "search subdirectories", "recursive"],
+                "excludePatterns": ["exclude", "ignore", "skip", "except"],
+                "file_types": ["types", "extensions", "file extensions"]
+            },
+            "response_template": "I found {total} files matching '{pattern}':",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir",
+                "the codebase": "/mnt/c/Sandboxes/CodeGen"
+            }
+        }
+    }
+)
 async def search_files(request: SearchRequest = Body(...)):
     """
     Search for files matching various criteria.
@@ -2048,7 +2590,42 @@ class DatabaseQueryRequest(BaseModel):
     params: Optional[Dict[str, Any]] = Field(None, description="Parameters for the SQL query")
     limit: int = Field(1000, description="Maximum number of results to return", ge=1, le=10000)
 
-@app.post("/database_query", summary="Execute a database query")
+@app.post("/database_query", 
+    summary="Execute a database query",
+    description="""
+    Execute a query on the metadata database.
+    Only SELECT queries are allowed for security reasons.
+    Results are limited to prevent excessive memory usage.
+    
+    ## Natural Language Queries
+    - "Query database for [query]"
+    - "Run SQL query [query]"
+    - "Search database with [query]"
+    - "Execute custom database query [query]"
+    - "Find database entries matching [query]"
+    - "Get database results for [query]"
+    - "Run a SQL search [query]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "query database for",
+                "run sql query",
+                "search database with",
+                "execute custom database query",
+                "find database entries matching",
+                "get database results for",
+                "run a sql search"
+            ],
+            "parameter_mappings": {
+                "query": ["sql query", "database query", "query string", "sql statement", "select statement"],
+                "params": ["parameters", "query parameters", "sql parameters"],
+                "limit": ["result limit", "maximum results", "max rows"]
+            },
+            "response_template": "The query returned {row_count} results in {execution_time_ms} milliseconds."
+        }
+    }
+)
 async def database_query(request: DatabaseQueryRequest = Body(...)):
     """
     Execute a query on the metadata database.

@@ -249,11 +249,19 @@ The file watcher doesn't watch any directories by default - you must explicitly 
 
 ### `GET /metadata/status`
 
-Get the current status of the file watcher system.
+Get the current status of the file watcher system. Note that this is the correct endpoint path - not `/watcher_status` or similar variations.
 
 **Example:**
 ```bash
-curl -X GET http://localhost:8000/metadata/status
+curl -X GET http://localhost:8010/metadata/status
+```
+
+**Correct Python client code:**
+```python
+import requests
+response = requests.get("http://localhost:8010/metadata/status")
+status = response.json()
+print(status)
 ```
 
 **Response:**
@@ -282,13 +290,15 @@ Possible status values:
 
 ### `POST /metadata/watch`
 
-Start watching a directory for file changes.
+Start watching a directory for file changes. This endpoint is used to explicitly add a directory to the watcher system. The watcher will then monitor this directory for file changes and update the metadata database accordingly.
 
-**Example:**
+**Important Note**: Make sure to use the correct path format and endpoint URL. The endpoint is at `/metadata/watch` (not at `/watch_directory` or other variations).
+
+**Example for watching a specific CodeGen directory:**
 ```bash
-curl -X POST http://localhost:8000/metadata/watch \
+curl -X POST http://localhost:8010/metadata/watch \
   -H "Content-Type: application/json" \
-  -d '{"path": "/app/testdir"}'
+  -d '{"path": "/mnt/c/Sandboxes/CodeGen"}'
 ```
 
 **Request:**
@@ -306,6 +316,11 @@ curl -X POST http://localhost:8000/metadata/watch \
   "watched_directory_count": 1
 }
 ```
+
+**Troubleshooting:**
+- If you get a 404 "Not Found" error, check that you're using the correct endpoint path (`/metadata/watch`) 
+- If you get a 400 "Bad Request" error, check that your path exists and is a valid directory
+- If you get a 403 "Forbidden" error, check that the directory is in one of the allowed directories
 
 ### `POST /metadata/unwatch`
 

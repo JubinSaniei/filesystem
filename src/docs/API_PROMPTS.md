@@ -1,6 +1,69 @@
-# API Prompts for Filesystem Service
+# API Prompts for Filesystem Service with MCP Integration
 
-This document provides ready-to-use prompts for interacting with the Filesystem Service API via an LLM chat interface. Copy and modify these prompts as needed.
+This document provides ready-to-use prompts for interacting with the Filesystem Service API via an LLM chat interface. These prompts are designed to work with AI chatbots using the Model Context Protocol (MCP).
+
+**Important**: When using these prompts with an AI, make sure the tool names match the endpoint paths with slashes replaced by underscores. For example, the `/metadata/status` endpoint would be invoked as `TOOL:metadata_status`. See the [MCP Integration Guide](MCP_INTEGRATION.md) for more details.
+
+## Natural Language Mapping
+
+This API supports natural language interactions through AI chatbot interfaces. Each endpoint has been enhanced with natural language mappings that help translate everyday user queries into the appropriate API calls.
+
+### Common Natural Language Patterns
+
+Each endpoint supports multiple natural language variations. For example:
+
+| Endpoint | Natural Language Variations |
+|----------|----------------------------|
+| `/metadata/status` | "What are you watching?", "Check watcher status", "What folders are you tracking?" |
+| `/read_file` | "Show me the contents of [file]", "What's in [file]?", "Read [file]" |
+| `/list_directory` | "What's in [directory]?", "List files in [folder]", "Show contents of [directory]" |
+| `/search_content` | "Search for [text] in files", "Find files containing [text]", "Which files contain [text]?" |
+
+### Common Path References
+
+Users often use natural language references to paths. These should be translated to the actual filesystem paths:
+
+| User Reference | Filesystem Path |
+|----------------|----------------|
+| "my CodeGen project" | "/mnt/c/Sandboxes/CodeGen" |
+| "CodeGen folder" | "/mnt/c/Sandboxes/CodeGen" |
+| "the test directory" | "/app/testdir" |
+| "test folder" | "/app/testdir" |
+
+### Parameter Mapping
+
+Parameters can also be expressed in natural language:
+
+| Natural Language | API Parameter |
+|------------------|--------------|
+| "large files" | `"min_size": 1048576` (1MB) |
+| "small files" | `"max_size": 1024` (1KB) |
+| "text files" | `"extensions": [".txt"]` |
+| "document files" | `"extensions": [".docx", ".pdf", ".md", ".txt"]` |
+| "media files" | `"extensions": [".jpg", ".png", ".mp3", ".mp4"]` |
+| "code files" | `"extensions": [".py", ".js", ".java", ".cpp", ".h"]` |
+
+### Response Formatting
+
+For better user experience, API responses should be converted into natural language:
+
+```
+Technical response:
+{
+  "watched_directories": ["/app/testdir", "/mnt/c/Sandboxes/CodeGen"],
+  "directory_count": 2,
+  "status": "active"
+}
+
+User-friendly response:
+"I'm currently watching 2 directories:
+- Your CodeGen project folder
+- The test directory
+
+These directories are automatically scanned every 5 minutes."
+```
+
+For more details on natural language mappings, see the [Natural Language Mapping Guide](NATURAL_LANGUAGE_MAPPING.md).
 
 ## Metadata API Endpoints
 
@@ -38,6 +101,18 @@ Endpoint: POST /metadata/watch
 {
   "path": "/app/testdir"
 }
+```
+
+For MCP AI integration use:
+```
+TOOL:metadata_watch
+{"path": "/app/testdir"}
+```
+
+To watch the CodeGen directory:
+```
+TOOL:metadata_watch
+{"path": "/mnt/c/Sandboxes/CodeGen"}
 ```
 
 ### Unwatch Directory
@@ -79,6 +154,12 @@ Endpoint: POST /metadata/scan
 Check the status of the file watcher service.
 
 Endpoint: GET /metadata/status
+```
+
+For MCP AI integration use:
+```
+TOOL:metadata_status
+{}
 ```
 
 ### Execute Database Query
@@ -258,11 +339,101 @@ Endpoint: POST /search_files
 }
 ```
 
-## Using These Prompts
+## Handling Ambiguous Natural Language Queries
 
-1. Copy the prompt for the API endpoint you want to use
-2. Modify the parameters as needed for your specific use case
-3. Pass the prompt to the LLM chat interface
-4. The LLM will generate the appropriate API call for you to execute
+When users provide ambiguous or incomplete natural language requests, the AI should ask clarifying questions before making tool calls.
 
-For endpoints that accept file paths, make sure the paths are within the allowed directories of the service.
+### Example 1: Ambiguous Query - "Find test files"
+
+**Clarification Questions**:
+1. "Would you like me to find files with 'test' in their name, or files that contain the word 'test'?"
+2. "Which directory should I search in? Your CodeGen project or the test directory?"
+
+### Example 2: Ambiguous Query - "Create a new file"
+
+**Clarification Questions**:
+1. "What should I name the new file?"
+2. "Where would you like me to create this file? In your CodeGen project or the test directory?"
+3. "What content should I put in the file?"
+
+### Best Practices for Response Design
+
+When presenting API responses to users:
+
+1. **Use friendly, conversational language** instead of technical terms
+2. **Simplify technical details** but provide them if they're relevant
+3. **Use emojis or formatting** to make file listings more scannable (📁 for folders, 📄 for files)
+4. **Round timestamps** to human-friendly formats ("2 hours ago" rather than exact timestamps)
+5. **Present file sizes in appropriate units** (KB/MB instead of bytes)
+6. **Offer follow-up actions** based on the current context
+7. **Handle errors gracefully** with suggestions for remediation
+
+## Using These Prompts with AI Chatbots
+
+### For MCP-Integrated AI Systems:
+
+1. For AI systems using MCP, use the format:
+   ```
+   TOOL:tool_name
+   {"parameter": "value"}
+   ```
+
+2. Make sure the tool name matches the endpoint path with slashes replaced by underscores:
+   - `/metadata/status` → `TOOL:metadata_status`
+   - `/metadata/watch` → `TOOL:metadata_watch`
+
+3. Always include a complete, valid JSON object as the parameter, even for endpoints that don't require parameters (use empty `{}`).
+
+4. For directories and files, always use absolute paths that are within the allowed directories.
+
+### Common MCP Integration Issues:
+
+- **404 Not Found errors**: Check if you're using the correct tool name (e.g., `metadata_status` not `watcher_status`).
+- **Parameter errors**: Ensure your JSON is valid and includes all required parameters.
+- **Path issues**: Make sure paths are absolute and within allowed directories.
+
+### Complete End-to-End Examples
+
+#### Example 1: "What files are you watching right now?"
+
+**User Query**: "What files are you watching right now?"
+
+**Analysis**: User is asking about watcher status
+
+**MCP Tool Call**:
+```
+TOOL:metadata_status
+{}
+```
+
+**User-friendly Response**:
+"I'm currently watching 2 directories:
+- Your CodeGen project folder
+- The test directory
+
+Both directories are being automatically scanned every 5 minutes to detect file changes."
+
+#### Example 2: "Find Python files modified in the last day"
+
+**User Query**: "Find Python files modified in the last day"
+
+**Analysis**: User wants to find files by extension and modification time
+
+**MCP Tool Call**:
+```
+TOOL:metadata_search
+{
+  "extensions": [".py"],
+  "modified_after": "2025-04-12T21:00:00",
+  "path_prefix": "/mnt/c/Sandboxes/CodeGen",
+  "limit": 20
+}
+```
+
+**User-friendly Response**:
+"I found 3 Python files modified in the last day:
+- main.py (modified 2 hours ago, 245 KB)
+- utils.py (modified 4 hours ago, 78 KB)
+- test_api.py (modified yesterday at 10:15 PM, 56 KB)"
+
+For more detailed integration guidance, see the [MCP Integration Guide](MCP_INTEGRATION.md).

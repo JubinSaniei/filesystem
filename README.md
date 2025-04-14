@@ -1,4 +1,4 @@
-# Filesystem API
+# Filesystem MCP
 
 A secure, feature-rich filesystem API for reading, editing, writing, listing, and searching files with access restrictions, metadata indexing, and real-time file watching.
 
@@ -39,23 +39,18 @@ A secure, feature-rich filesystem API for reading, editing, writing, listing, an
 filesystem/
 ├── main.py                   # Main entry point that launches the app
 ├── set_api_url.py            # Script to set the API URL configuration
+├── run_tests.py              # Script to run all tests
+├── requirements.txt          # Python dependencies
+├── Dockerfile                # Docker configuration
+├── compose.yaml              # Docker Compose configuration
 ├── src/                      # Source code directory
 │   ├── api/                  # API endpoint modules
-│   │   └── metadata_api.py   # Metadata API functionality
 │   ├── core/                 # Core application functionality
-│   │   └── main.py           # FastAPI application definition
 │   ├── db/                   # Database models and operations
-│   │   ├── db.py             # Database operations and models
-│   │   └── db_*.py           # Database utility scripts
 │   ├── utils/                # Utility modules
-│   │   ├── config.py         # Centralized configuration
-│   │   ├── ignore_patterns.py # Pattern matching for ignoring files
-│   │   └── watcher.py        # File system watcher
-│   ├── tests/                # Test files
-│   └── docs/                 # Documentation files
-├── Dockerfile                # Docker configuration
-├── docker-compose.yaml       # Docker Compose configuration
-└── requirements.txt          # Python dependencies
+│   ├── docs/                 # Documentation files
+│   └── tests/                # Test files
+└── testdir/                  # Test directory for examples and testing
 ```
 
 ## Quick Start
@@ -157,10 +152,39 @@ python -m main --host=0.0.0.0 --port=8010 --reload --log-level=debug
 
 ### File Watcher Operations
 
-- `GET /metadata/status` - Get the current status of the file watcher
+- `GET /metadata/status` - Get the current status of the file watcher (correct endpoint; not `/watcher_status`)
 - `POST /metadata/watch` - Start watching a directory for changes
 - `POST /metadata/unwatch` - Stop watching a directory
 - `POST /metadata/scan` - Trigger an immediate scan of watched directories
+
+Note that the correct endpoint to watch a directory is:
+```
+POST /metadata/watch
+Content-Type: application/json
+
+{
+  "path": "/path/to/directory"
+}
+```
+
+Example using curl:
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"path": "/mnt/c/Sandboxes/CodeGen"}' http://localhost:8010/metadata/watch
+```
+
+Example using Python:
+```python
+import requests
+response = requests.post(
+    "http://localhost:8010/metadata/watch",
+    json={"path": "/mnt/c/Sandboxes/CodeGen"}
+)
+print(response.json())
+```
+
+For complete examples, see the example scripts in the `examples/` directory:
+- `watch_codegen.py` - Example specifically for watching the CodeGen directory
+- `file_watcher_example.py` - Complete example of all file watcher operations
 
 The file watcher doesn't watch any directories by default - you must explicitly add directories to watch using the `/metadata/watch` endpoint. Once a directory is being watched, the system will automatically:
 
@@ -169,7 +193,7 @@ The file watcher doesn't watch any directories by default - you must explicitly 
 3. Scan the watched directories periodically (every 5 minutes by default)
 4. Process changes in batches to minimize system resource usage
 
-For detailed examples of file watcher API usage, see the [API Reference](src/docs/API_REFERENCE.md#file-watcher-operations) documentation.
+For detailed examples of file watcher API usage, see the [API Reference](src/docs/API_REFERENCE.md#file-watcher-operations) documentation. For AI chatbot integration using the Model Context Protocol (MCP), see the [MCP Integration Guide](src/docs/MCP_INTEGRATION.md).
 
 ## Configuration
 
@@ -300,17 +324,28 @@ After resetting, the watcher will automatically reindex watched directories on t
 
 ### Testing
 
-Various test scripts are available in the `src/tests` directory:
+The project includes a comprehensive test suite that verifies all API endpoints:
 
 ```bash
-# Run verification tests
-python -m src.tests.verify_api
-python -m src.tests.verify_extended_api
-python -m src.tests.verify_remaining_api
+# Run all API tests
+python -m src.tests.test_all_apis
 
-# Run targeted tests
-python -m src.tests.test_ignore
-python -m src.tests.test_index
+# Run specific test categories
+python -m src.tests.test_all_apis --test basic     # Basic API endpoints
+python -m src.tests.test_all_apis --test extended  # Extended API endpoints
+python -m src.tests.test_all_apis --test remaining # Remaining API endpoints
+python -m src.tests.test_all_apis --test metadata  # Metadata API endpoints
+
+# Individual test scripts are also available
+python -m src.tests.verify_api            # Basic API endpoints
+python -m src.tests.verify_extended_api   # Extended API endpoints 
+python -m src.tests.verify_remaining_api  # Remaining API endpoints
+python -m src.tests.verify_metadata_api   # Metadata API endpoints
+
+# Targeted component tests
+python -m src.tests.test_ignore           # Tests for ignore patterns
+python -m src.tests.test_index            # Tests for directory indexing
+python -m src.tests.test_search           # Tests for file search functionality
 ```
 
 ### Documentation
@@ -322,3 +357,6 @@ For more detailed documentation, please see:
 - [Database Management](src/docs/DATABASE_MANAGEMENT.md) - Database management and reset guide
 - [Ignore Patterns Guide](src/docs/IGNORE_PATTERNS_GUIDE.md) - Guide for ignore patterns
 - [API Prompts](src/docs/API_PROMPTS.md) - Example prompts for API usage
+- [MCP Integration Guide](src/docs/MCP_INTEGRATION.md) - Guide for AI chatbot integration using MCP
+- [Natural Language Mapping](src/docs/NATURAL_LANGUAGE_MAPPING.md) - Comprehensive guide for translating natural language to API calls
+- [OpenAPI NL Usage](src/docs/OPENAPI_NL_USAGE.md) - How to use the enhanced OpenAPI schema with natural language mappings

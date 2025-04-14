@@ -12,6 +12,7 @@ import logging
 from src.db import db
 from src.utils import watcher
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.utils.nl_mapping import nl_mapping, COMMON_PATHS, COMMON_PARAMETER_MAPPINGS
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -94,7 +95,44 @@ class IndexStatusResponse(BaseModel):
 
 # --- API Endpoints ---
 
-@router.post("/search", response_model=PaginatedMetadataResponse, summary="Search file metadata")
+@router.post(
+    "/search", 
+    response_model=PaginatedMetadataResponse, 
+    summary="Search file metadata",
+    description="""
+    Search for files and directories using metadata criteria.
+    Results are paginated and can be filtered by various attributes.
+    
+    ## Natural Language Queries
+    - "Find files with extension [ext]"
+    - "Search for [file type] files"
+    - "Find files modified [time period]"
+    - "Search for files related to [topic]"
+    - "Find files containing [term] in their name"
+    - "Search for [size] files"
+    """,
+    openapi_extra=nl_mapping(
+        queries=[
+            "find files with extension",
+            "search for file type files",
+            "find files modified recently",
+            "search for files related to topic",
+            "find files containing term in their name",
+            "search for large files",
+            "search for small files"
+        ],
+        parameter_mappings={
+            "query": ["search term", "keyword", "text", "name contains"],
+            "extensions": ["file types", "file extensions", "types of files"],
+            "is_directory": ["folders only", "files only", "just directories", "just files"],
+            "min_size": ["larger than", "bigger than", "minimum size"],
+            "max_size": ["smaller than", "maximum size", "not bigger than"],
+            "path_prefix": ["in directory", "under path", "within folder"]
+        },
+        response_template="I found {total} files matching your search criteria.",
+        common_paths=COMMON_PATHS
+    )
+)
 async def search_metadata(data: MetadataSearchRequest = Body(...)):
     """
     Search for files and directories using metadata criteria.
@@ -135,7 +173,43 @@ async def search_metadata(data: MetadataSearchRequest = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching metadata: {str(e)}")
 
-@router.get("/path/{path:path}", response_model=Union[MetadataResponse, None], summary="Get metadata for a specific path")
+@router.get(
+    "/path/{path:path}", 
+    response_model=Union[MetadataResponse, None], 
+    summary="Get metadata for a specific path",
+    description="""
+    Get metadata for a specific file or directory path.
+    Returns null if the path doesn't exist in the index.
+    
+    ## Natural Language Queries
+    - "Get metadata for [path]"
+    - "Show details for file [file]"
+    - "Tell me about [path]"
+    - "What are the properties of [file]?"
+    - "Show file information for [path]"
+    - "Get details of [file]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "get metadata for path",
+                "show details for file",
+                "tell me about path",
+                "what are the properties of file",
+                "show file information for path",
+                "get details of file"
+            ],
+            "parameter_mappings": {
+                "path": ["file", "file path", "directory", "location"]
+            },
+            "response_template": "File: {name}\nType: {type}\nSize: {size_bytes} bytes\nCreated: {created_time}\nLast modified: {modified_time}",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def get_path_metadata(path: str):
     """
     Get metadata for a specific file or directory path.
@@ -154,7 +228,51 @@ async def get_path_metadata(path: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving metadata: {str(e)}")
 
-@router.post("/watch", response_model=Dict[str, Any], summary="Watch a directory for changes")
+@router.post(
+    "/watch", 
+    response_model=Dict[str, Any], 
+    summary="Watch a directory for changes",
+    description="""
+    Start watching a directory for file changes.
+    The watcher will automatically update the metadata index when files change in this directory.
+    
+    ## Natural Language Queries
+    - "Watch my CodeGen folder"
+    - "Start monitoring my project directory"
+    - "Track changes in [directory]"
+    - "Keep an eye on the files in [folder]"
+    - "Watch for changes in [path]"
+    - "Start watching [directory]"
+    - "Monitor [folder]"
+    
+    ## Common Path References
+    - "my CodeGen folder" → "/mnt/c/Sandboxes/CodeGen"
+    - "the test directory" → "/app/testdir"
+    - "the project folder" → "/mnt/c/Sandboxes/CodeGen"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "watch my codegen folder",
+                "start monitoring my project directory",
+                "track changes in directory",
+                "keep an eye on the files in folder",
+                "watch for changes in path",
+                "start watching directory",
+                "monitor folder"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location"]
+            },
+            "response_template": "I'm now watching {path} for changes. I'll automatically detect when files are added, modified, or deleted.",
+            "common_paths": {
+                "my CodeGen folder": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir",
+                "the project folder": "/mnt/c/Sandboxes/CodeGen"
+            }
+        }
+    }
+)
 async def watch_directory(data: WatchDirectoryRequest = Body(...)):
     """
     Start watching a directory for file changes.
@@ -192,7 +310,48 @@ async def watch_directory(data: WatchDirectoryRequest = Body(...)):
             detail=f"Failed to watch directory: {str(e)}"
         )
 
-@router.post("/unwatch", response_model=Dict[str, Any], summary="Stop watching a directory")
+@router.post(
+    "/unwatch", 
+    response_model=Dict[str, Any], 
+    summary="Stop watching a directory",
+    description="""
+    Stop watching a directory for file changes.
+    
+    ## Natural Language Queries
+    - "Stop watching [directory]"
+    - "Don't monitor [folder] anymore"
+    - "Remove [directory] from watched list"
+    - "Unwatch [folder]"
+    - "Stop tracking changes in [path]"
+    - "Disable watcher for [directory]"
+    
+    ## Common Path References
+    - "my CodeGen folder" → "/mnt/c/Sandboxes/CodeGen"
+    - "the test directory" → "/app/testdir"
+    - "the project folder" → "/mnt/c/Sandboxes/CodeGen"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "stop watching directory",
+                "don't monitor folder anymore",
+                "remove directory from watched list",
+                "unwatch folder",
+                "stop tracking changes in path",
+                "disable watcher for directory"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location"]
+            },
+            "response_template": "I've stopped watching {path}. I'm still watching {watched_directory_count} other director{plural}.",
+            "common_paths": {
+                "my CodeGen folder": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir",
+                "the project folder": "/mnt/c/Sandboxes/CodeGen"
+            }
+        }
+    }
+)
 async def unwatch_directory(data: UnwatchDirectoryRequest = Body(...)):
     """
     Stop watching a directory for file changes.
@@ -228,7 +387,43 @@ async def unwatch_directory(data: UnwatchDirectoryRequest = Body(...)):
             detail=f"Failed to stop watching directory: {str(e)}"
         )
 
-@router.post("/reindex", response_model=Dict[str, Any], summary="Force reindexing of a directory")
+@router.post(
+    "/reindex", 
+    response_model=Dict[str, Any], 
+    summary="Force reindexing of a directory",
+    description="""
+    Force reindexing of a directory and all its contents.
+    With no file limit for comprehensive indexing.
+    
+    ## Natural Language Queries
+    - "Reindex [directory]"
+    - "Rebuild index for [directory]"
+    - "Create fresh index of [directory]"
+    - "Force reindex of [directory]"
+    - "Completely reindex [directory]"
+    - "Update index for [directory]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "reindex directory",
+                "rebuild index for directory",
+                "create fresh index of directory",
+                "force reindex of directory",
+                "completely reindex directory",
+                "update index for directory"
+            ],
+            "parameter_mappings": {
+                "path": ["directory", "folder", "location"]
+            },
+            "response_template": "I've reindexed {path}. {file_count} files were successfully indexed.",
+            "common_paths": {
+                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
+                "the test directory": "/app/testdir"
+            }
+        }
+    }
+)
 async def reindex_directory(data: WatchDirectoryRequest = Body(...)):
     """
     Force reindexing of a directory and all its contents.
@@ -263,7 +458,41 @@ async def reindex_directory(data: WatchDirectoryRequest = Body(...)):
             detail=f"Failed to index directory: {str(e)}"
         )
 
-@router.post("/scan", response_model=Dict[str, Any], summary="Trigger manual scan of watched directories")
+@router.post(
+    "/scan", 
+    response_model=Dict[str, Any], 
+    summary="Trigger manual scan of watched directories",
+    description="""
+    Manually trigger a scan of watched directories to update the metadata index.
+    Useful when you've made changes outside the API and want to update the index immediately.
+    
+    ## Natural Language Queries
+    - "Scan the watched directories"
+    - "Update the file index"
+    - "Check for new files now"
+    - "Run a manual scan"
+    - "Scan for changes"
+    - "Update the file database"
+    - "Rescan watched folders"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "scan the watched directories",
+                "update the file index",
+                "check for new files now",
+                "run a manual scan",
+                "scan for changes",
+                "update the file database",
+                "rescan watched folders"
+            ],
+            "parameter_mappings": {
+                "force": ["force scan", "full scan", "complete scan"]
+            },
+            "response_template": "I've completed a scan of {scanned_count} watched directories. The file database has been updated with any recent changes."
+        }
+    }
+)
 async def scan_watched_directories(data: ScanDirectoryRequest = Body(...)):
     """
     Manually trigger a scan of watched directories to update the metadata index.
@@ -346,7 +575,40 @@ async def scan_watched_directories(data: ScanDirectoryRequest = Body(...)):
             detail=f"Error scanning directories: {str(e)}"
         )
 
-@router.get("/status", response_model=Dict[str, Any], summary="Get file watcher status")
+@router.get(
+    "/status", 
+    response_model=Dict[str, Any], 
+    summary="Get file watcher status",
+    description="""
+    Get the current status of the file watcher system.
+    Shows which directories are being watched, when they were last scanned,
+    and if the watcher is actively running.
+    
+    ## Natural Language Queries
+    - "What are you watching?"
+    - "What directories are being monitored?"
+    - "Check watcher status"
+    - "Is the file watcher active?"
+    - "Show me all watched directories"
+    - "What folders are you tracking?"
+    - "Are you watching any directories now?"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "what are you watching",
+                "what directories are being monitored",
+                "check watcher status",
+                "is the file watcher active",
+                "show me all watched directories",
+                "what folders are you tracking",
+                "are you watching any directories now"
+            ],
+            "parameter_mappings": {},
+            "response_template": "I'm currently watching {directory_count} directories: {watched_directories}. The watcher is {status}."
+        }
+    }
+)
 async def watcher_status():
     """
     Get the current status of the file watcher system.
@@ -397,7 +659,42 @@ async def watcher_status():
             detail=f"Error getting watcher status: {str(e)}"
         )
 
-@router.post("/database_query", summary="Execute a database query")
+@router.post(
+    "/database_query", 
+    summary="Execute a database query",
+    description="""
+    Execute a query on the metadata database.
+    
+    Only SELECT queries are allowed for security reasons.
+    Results are limited to prevent excessive memory usage.
+    
+    ## Natural Language Queries
+    - "Run a database query to find [criteria]"
+    - "Execute SQL query [query]"
+    - "Query the database for [information]"
+    - "Search the database for [criteria]"
+    - "Get database information about [topic]"
+    - "Run SQL [query]"
+    """,
+    openapi_extra={
+        "x-natural-language-queries": {
+            "intents": [
+                "run a database query to find criteria",
+                "execute sql query",
+                "query the database for information",
+                "search the database for criteria",
+                "get database information about topic",
+                "run sql query"
+            ],
+            "parameter_mappings": {
+                "query": ["sql query", "database query", "sql", "query"],
+                "params": ["parameters", "query parameters", "sql parameters"],
+                "limit": ["row limit", "maximum rows", "result limit"]
+            },
+            "response_template": "Query executed successfully. Found {row_count} rows in {execution_time_ms} ms."
+        }
+    }
+)
 async def database_query(request: DatabaseQueryRequest = Body(...)):
     """
     Execute a query on the metadata database.
