@@ -21,6 +21,12 @@ A secure, feature-rich filesystem API for reading, editing, writing, listing, an
   - Batch processing for better performance
   - Queue system for handling high-volume changes
   - Automatic periodic scans of watched directories
+- **Natural Language Support**: Enhanced OpenAPI schema with natural language mappings
+  - Endpoint mapping for translating casual user queries to API calls
+  - Parameter extraction from natural language requests
+  - Common path reference resolution (e.g., "my project folder" → "/path/to/project")
+  - Response formatting for user-friendly output
+  - Support for both API and MCP tool call formats
 - **File Content Caching**: Smart caching system with LRU eviction for better performance
 - **Cross-Origin Support**: Properly configured CORS for web UI integration
 - **Rate Limiting**: Optional request rate limiting to prevent abuse
@@ -122,6 +128,8 @@ python -m main --host=0.0.0.0 --port=8010 --reload --log-level=debug
 ```
 
 ## API Endpoints
+
+All endpoints in this API support natural language mappings, allowing AI assistants to translate everyday language queries into appropriate API calls. For example, "Show me the contents of config.json" would map to the `/read_file` endpoint with the correct parameters. See the [Natural Language Mapping Guide](src/docs/NATURAL_LANGUAGE_MAPPING.md) for details.
 
 ### File Operations
 
