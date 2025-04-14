@@ -419,14 +419,32 @@ User-friendly response:
 - "Create a new file [name]"
 - "Make a file with [content]"
 - "Save [content] as [filename]"
+- "Append [content] to [file]"
+- "Add [content] to the end of [file]"
+- "Update [file] by adding [content] at the end"
+- "Modify [file] and append [content]"
+- "Prepend [content] to [file]"
+- "Add [content] to the beginning of [file]"
 
 **Parameter Structure**:
 ```json
 {
   "path": "/path/to/file.txt",
-  "content": "Content to write to the file."
+  "content": "Content to write to the file.",
+  "mode": "overwrite"  // Options: "overwrite" (default), "append", or "prepend"
 }
 ```
+
+**Natural Language to Parameter Mapping**:
+- "append to the file" → `"mode": "append"`
+- "add to the end" → `"mode": "append"`
+- "prepend to the file" → `"mode": "prepend"`
+- "add to the beginning" → `"mode": "prepend"`
+- "overwrite the file" → `"mode": "overwrite"`
+
+**Special Handling**:
+- When using append mode, the system automatically adds a newline if the file doesn't end with one, ensuring proper formatting.
+- This means users can simply say "append 'text' to file" without worrying about newline handling.
 
 **Response Transformation**:
 ```
@@ -435,8 +453,15 @@ Example technical response:
   "message": "Successfully wrote to /app/testdir/new_note.txt"
 }
 
-User-friendly response:
-"I've created a new file called 'new_note.txt' in the test directory with the content you provided."
+User-friendly responses:
+1. For overwrite mode:
+   "I've created a new file called 'new_note.txt' in the test directory with the content you provided."
+
+2. For append mode:
+   "I've appended the text to the end of 'existing_file.txt' in the test directory."
+
+3. For prepend mode:
+   "I've added the text to the beginning of 'existing_file.txt' in the test directory."
 ```
 
 ### Edit File Endpoint

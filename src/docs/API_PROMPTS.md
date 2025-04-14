@@ -199,7 +199,32 @@ Write content to a file, creating it if it doesn't exist.
 Endpoint: POST /write_file
 {
   "path": "/app/testdir/new_file.txt",
-  "content": "This is a new file created via the API."
+  "content": "This is a new file created via the API.",
+  "mode": "overwrite"  // Optional: "overwrite" (default), "append", or "prepend"
+}
+```
+
+#### For Appending Text to a File
+
+```
+Append text to the end of an existing file.
+A newline will be automatically added if the file doesn't end with one.
+
+Endpoint: POST /write_file
+{
+  "path": "/app/testdir/existing_file.txt",
+  "content": "This text will be added to the end of the file.",
+  "mode": "append"
+}
+```
+
+For MCP AI integration use:
+```
+TOOL:write_file
+{
+  "path": "/app/testdir/existing_file.txt",
+  "content": "\nThis text will be appended.",
+  "mode": "append"
 }
 ```
 

@@ -585,8 +585,9 @@ class ReadFileRequest(BaseModel):
 
 
 class WriteFileRequest(BaseModel):
-    path: str = Field(..., description="Path to write to. Existing file will be overwritten.")
+    path: str = Field(..., description="Path to write to. Existing file will be overwritten, appended, or prepended based on mode.")
     content: str = Field(..., description="UTF-8 encoded text content to write.")
+    mode: str = Field("overwrite", description="Write mode: 'overwrite' (default), 'append', or 'prepend'")
 
 
 class EditOperation(BaseModel):
@@ -956,7 +957,7 @@ async def read_file(data: ReadFileRequest = Body(...)):
     response_model=SuccessResponse, 
     summary="Write to a file",
     description="""
-    Write content to a file, overwriting if it exists. Returns JSON success message.
+    Write content to a file, with options for overwriting, appending, or prepending text.
     Uses async file operations for better performance.
     Implements transaction-like semantics for cache operations.
     Also updates metadata index when a file is written.
@@ -968,32 +969,40 @@ async def read_file(data: ReadFileRequest = Body(...)):
     - "Create a new file [name]"
     - "Make a file with [content]"
     - "Save [content] as [filename]"
+    - "Append [content] to [file]"
+    - "Add [content] to the end of [file]"
+    - "Update [file] by adding [content] at the end"
+    - "Prepend [content] to [file]"
+    - "Add [content] to the beginning of [file]"
     """,
-    openapi_extra={
-        "x-natural-language-queries": {
-            "intents": [
-                "create a file called name with content",
-                "write content to file",
-                "save this content to file",
-                "create a new file",
-                "make a file with content",
-                "save content as filename"
-            ],
-            "parameter_mappings": {
-                "path": ["file", "filename", "path", "location", "name"],
-                "content": ["text", "content", "data", "information"]
-            },
-            "response_template": "I've created a new file called '{file_name}' with the content you provided.",
-            "common_paths": {
-                "my CodeGen project": "/mnt/c/Sandboxes/CodeGen",
-                "the test directory": "/app/testdir"
-            }
-        }
-    }
+    openapi_extra=nl_mapping(
+        queries=[
+            "create a file called name with content",
+            "write content to file",
+            "save this content to file",
+            "create a new file",
+            "make a file with content",
+            "save content as filename",
+            "append content to file",
+            "add content to the end of file",
+            "update file by adding content at the end",
+            "modify file and append content",
+            "prepend content to file",
+            "add content to the beginning of file"
+        ],
+        parameter_mappings={
+            "path": ["file", "filename", "path", "location", "name"],
+            "content": ["text", "content", "data", "information"],
+            "mode": ["append", "overwrite", "prepend", "add to", "write to"]
+        },
+        response_template="I've updated the file '{file_name}' with the content you provided.",
+        common_paths=COMMON_PATHS
+    )
 )
 async def write_file(data: WriteFileRequest = Body(...)):
     """
-    Write content to a file, overwriting if it exists. Returns JSON success message.
+    Write content to a file, with options for overwriting, appending, or prepending.
+    Returns JSON success message.
     Uses async file operations for better performance.
     Implements transaction-like semantics for cache operations.
     Also updates metadata index when a file is written.
@@ -1013,18 +1022,91 @@ async def write_file(data: WriteFileRequest = Body(...)):
             invalidate_cache_for_path(path_str)
             cache_invalidated = True
         
-        # Write file asynchronously
         try:
-            async with aiofiles.open(path, mode='w', encoding='utf-8') as file:
-                await file.write(data.content)
+            # Handle different write modes
+            if data.mode == "append" and path.exists():
+                # For append mode, we need to read current content first
+                current_content = ""
+                try:
+                    # First read the content
+                    current_content = ""
+                    if path.exists():
+                        async with aiofiles.open(path, mode='r', encoding='utf-8') as file:
+                            current_content = await file.read()
+                    
+                    # For debugging
+                    logger.info(f"Original content: {repr(current_content)}")
+                    logger.info(f"Appending content: {repr(data.content)}")
+                    
+                    # Append new content to current content with proper line handling
+                    # Check if the current content ends with a newline
+                    if current_content and not current_content.endswith('\n'):
+                        # If no newline at end of file, add one before appending
+                        combined_content = current_content + '\n' + data.content
+                    else:
+                        # If already has newline or is empty, just append
+                        combined_content = current_content + data.content
+                    logger.info(f"Combined content: {repr(combined_content)}")
+                    
+                    # Write combined content
+                    async with aiofiles.open(path, mode='w', encoding='utf-8') as file:
+                        await file.write(combined_content)
+                except UnicodeDecodeError:
+                    # If we can't read the file as text, open it in binary mode
+                    # This might happen for binary files
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Cannot append to binary file. Use overwrite mode instead."
+                    )
+            elif data.mode == "prepend" and path.exists():
+                # For prepend mode, we need to read current content first
+                current_content = ""
+                try:
+                    # First read the content
+                    current_content = ""
+                    if path.exists():
+                        async with aiofiles.open(path, mode='r', encoding='utf-8') as file:
+                            current_content = await file.read()
+                    
+                    # For debugging
+                    logger.info(f"Original content: {repr(current_content)}")
+                    logger.info(f"Prepending content: {repr(data.content)}")
+                    
+                    # Prepend new content to current content
+                    combined_content = data.content + current_content
+                    logger.info(f"Combined content: {repr(combined_content)}")
+                    
+                    # Write combined content
+                    async with aiofiles.open(path, mode='w', encoding='utf-8') as file:
+                        await file.write(combined_content)
+                except UnicodeDecodeError:
+                    # If we can't read the file as text, open it in binary mode
+                    # This might happen for binary files
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Cannot prepend to binary file. Use overwrite mode instead."
+                    )
+            else:
+                # Default: overwrite mode (or file doesn't exist)
+                async with aiofiles.open(path, mode='w', encoding='utf-8') as file:
+                    await file.write(data.content)
         except Exception as e:
             # If we failed to write but already invalidated cache, we can't
             # recover the old cache entry. Just pass the error up.
             raise e
         
-        # If write succeeded, update cache with new content
+        # If write succeeded, update cache with the correct content
         modified_time = path.stat().st_mtime
-        add_to_file_cache(path_str, data.content, modified_time)
+        
+        # For append and prepend modes, we should cache the combined content, not just the new data
+        if data.mode in ("append", "prepend") and path.exists():
+            # Re-read the file to get the correct content for caching
+            async with aiofiles.open(path, mode='r', encoding='utf-8') as file:
+                cache_content = await file.read()
+            add_to_file_cache(path_str, cache_content, modified_time)
+        else:
+            # For overwrite mode, we can just cache the provided content
+            add_to_file_cache(path_str, data.content, modified_time)
         
         # Clear the normalize_path cache if this is a new file
         # This ensures new paths are recognized correctly

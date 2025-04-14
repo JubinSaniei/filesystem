@@ -46,5 +46,10 @@ COMMON_PATHS = {
 COMMON_PARAMETER_MAPPINGS = {
     "directory": ["folder", "path", "location", "directory"],
     "file": ["document", "text file", "file"],
-    "recursive": ["include subdirectories", "search recursively", "look in subfolders"]
+    "recursive": ["include subdirectories", "search recursively", "look in subfolders"],
+    "operation": {
+        "append": ["append", "add to end", "append to", "add at the end of", "attach to end of"],
+        "overwrite": ["overwrite", "replace", "rewrite", "write new content to"],
+        "prepend": ["prepend", "add to beginning", "insert at start of", "add before"]
+    }
 }
